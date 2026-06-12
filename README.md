@@ -14,8 +14,15 @@ cp .env.example .env
 docker compose up --build
 ```
 
-La API queda disponible en `http://localhost:8000`.  
-Documentación interactiva: `http://localhost:8000/docs`
+La API queda disponible en `http://localhost:8000`.
+
+> **La forma más simple de probar todo** es la documentación interactiva en
+> **`http://localhost:8000/docs`** (Swagger UI): registrás un usuario, hacés login,
+> hacés click en **Authorize** (pegás el token) y ejecutás cualquier endpoint desde el
+> navegador, sin armar comandos a mano.
+>
+> Nota: la raíz `/` no tiene endpoint (responde `404` a propósito); el punto de entrada
+> es `/docs`.
 
 ---
 
@@ -70,32 +77,77 @@ El gate de cobertura es ≥ 85%; la suite actual supera el 95%.
 
 ---
 
-## Ejemplos rápidos (curl)
+## Guía de prueba completa (curl)
+
+Esta secuencia ejercita **todas** las funcionalidades de la API de principio a fin.
+Pegala paso a paso en una terminal con la API ya levantada. Usa
+[`jq`](https://stedolan.github.io/jq/) para extraer datos de las respuestas (en Debian/
+Ubuntu: `sudo apt install jq`); más abajo hay una alternativa sin `jq`.
 
 ```bash
-# Registrar usuario
-curl -X POST http://localhost:8000/auth/register \
+BASE=http://localhost:8000
+
+# 1) Registrar un usuario
+curl -s -X POST $BASE/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"mypassword"}'
+  -d '{"email":"admin@peopleflow.com","password":"secret123"}'
 
-# Obtener token
-TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
-  -d 'username=user@example.com&password=mypassword' | jq -r .access_token)
+# 2) Login → guardar el JWT en una variable (el campo es "username", va el email)
+TOKEN=$(curl -s -X POST $BASE/auth/login \
+  -d 'username=admin@peopleflow.com&password=secret123' | jq -r .access_token)
+echo "TOKEN=$TOKEN"        # debe imprimir un string largo, no 'null'
 
-# Crear empleado
-curl -X POST http://localhost:8000/employees \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"nombre":"Ana","apellido":"García","email":"ana@example.com","puesto":"Engineer","salario":85000,"fecha_ingreso":"2022-01-15"}'
+# A partir de acá, todos los endpoints de empleados requieren el header Authorization.
 
-# Listar con filtro y paginación
-curl "http://localhost:8000/employees?puesto=Engineer&page=1&page_size=10" \
+# 3) Crear empleados (guardamos el id del primero para los pasos siguientes)
+EMP_ID=$(curl -s -X POST $BASE/employees \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Ana","apellido":"García","email":"ana@example.com","puesto":"Engineer","salario":85000,"fecha_ingreso":"2022-01-15"}' \
+  | jq -r .id)
+echo "EMP_ID=$EMP_ID"
+
+curl -s -X POST $BASE/employees \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Beto","apellido":"Pérez","email":"beto@example.com","puesto":"Engineer","salario":95000,"fecha_ingreso":"2023-03-10"}'
+
+curl -s -X POST $BASE/employees \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"nombre":"Carla","apellido":"Díaz","email":"carla@example.com","puesto":"Manager","salario":120000,"fecha_ingreso":"2021-09-01"}'
+
+# 4) Listar con filtro por puesto y paginación → { items, total, page, pages }
+curl -s "$BASE/employees?puesto=Engineer&page=1&page_size=10" \
   -H "Authorization: Bearer $TOKEN"
 
-# Promedio de salarios
-curl http://localhost:8000/employees/stats/salary-average \
+# 5) Obtener un empleado por id
+curl -s $BASE/employees/$EMP_ID -H "Authorization: Bearer $TOKEN"
+
+# 6) Actualizar (parcial) — subimos el salario de Ana
+curl -s -X PATCH $BASE/employees/$EMP_ID \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"salario":90000}'
+
+# 7) Promedio de salarios de toda la empresa (el reporte del CFO)
+curl -s $BASE/employees/stats/salary-average -H "Authorization: Bearer $TOKEN"
+
+# 8) Eliminar un empleado (responde 204 sin cuerpo)
+curl -s -o /dev/null -w "%{http_code}\n" -X DELETE $BASE/employees/$EMP_ID \
+  -H "Authorization: Bearer $TOKEN"
+
+# 9) Verificar que ya no existe (responde 404)
+curl -s -o /dev/null -w "%{http_code}\n" $BASE/employees/$EMP_ID \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+**Sin `jq`** (paso 2 alternativo, usando Python):
+
+```bash
+TOKEN=$(curl -s -X POST $BASE/auth/login \
+  -d 'username=admin@peopleflow.com&password=secret123' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+```
+
+> `Authorization` siempre lleva la palabra **`Bearer`** + espacio + el JWT. Sin un token
+> válido, los endpoints de empleados responden `401`.
 
 ---
 
