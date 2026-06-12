@@ -1,6 +1,6 @@
 import math
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List
 from pydantic import BaseModel, EmailStr, Field, field_serializer
 
@@ -58,4 +58,7 @@ class SalaryStats(BaseModel):
 
     @field_serializer("average_salary")
     def _serialize_average(self, value: Decimal | None) -> float | None:
-        return float(value) if value is not None else None
+        if value is None:
+            return None
+        # Reporte de dinero: redondeo a 2 decimales (centavos) con ROUND_HALF_UP.
+        return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))

@@ -49,6 +49,18 @@ class TestSalaryStats:
         assert data["total_employees"] == 3
         assert data["average_salary"] == 1000.20
 
+    async def test_stats_rounds_to_two_decimals(self, client, auth_headers):
+        # 305000 / 3 = 101666.6666...  -> el reporte del CFO se redondea a centavos.
+        salaries = ["90000", "95000", "120000"]
+        for i, salary in enumerate(salaries):
+            payload = {**EMPLOYEE_BASE, "email": f"round{i}@example.com", "salario": salary}
+            await client.post("/employees", json=payload, headers=auth_headers)
+
+        resp = await client.get("/employees/stats/salary-average", headers=auth_headers)
+        data = resp.json()
+        assert data["total_employees"] == 3
+        assert data["average_salary"] == 101666.67
+
     async def test_stats_requires_auth(self, client):
         resp = await client.get("/employees/stats/salary-average")
         assert resp.status_code == 401
