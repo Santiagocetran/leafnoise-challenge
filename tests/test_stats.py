@@ -37,6 +37,18 @@ class TestSalaryStats:
         assert data["total_employees"] == 3
         assert data["average_salary"] == pytest.approx(80000.0)
 
+    async def test_stats_preserves_decimal_precision(self, client, auth_headers):
+        # Con almacenamiento Decimal128 el promedio es exacto; con float habría deriva.
+        salaries = ["1000.10", "1000.20", "1000.30"]
+        for i, salary in enumerate(salaries):
+            payload = {**EMPLOYEE_BASE, "email": f"dec{i}@example.com", "salario": salary}
+            await client.post("/employees", json=payload, headers=auth_headers)
+
+        resp = await client.get("/employees/stats/salary-average", headers=auth_headers)
+        data = resp.json()
+        assert data["total_employees"] == 3
+        assert data["average_salary"] == 1000.20
+
     async def test_stats_requires_auth(self, client):
         resp = await client.get("/employees/stats/salary-average")
         assert resp.status_code == 401

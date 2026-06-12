@@ -1,7 +1,8 @@
 import math
 from datetime import date
+from decimal import Decimal
 from typing import List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 
 
 class EmployeeCreate(BaseModel):
@@ -9,7 +10,7 @@ class EmployeeCreate(BaseModel):
     apellido: str = Field(..., min_length=1)
     email: EmailStr
     puesto: str = Field(..., min_length=1)
-    salario: float = Field(..., ge=0.0)
+    salario: Decimal = Field(..., ge=0)
     fecha_ingreso: date
 
 
@@ -18,7 +19,7 @@ class EmployeeUpdate(BaseModel):
     apellido: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     puesto: str | None = Field(default=None, min_length=1)
-    salario: float | None = Field(default=None, ge=0.0)
+    salario: Decimal | None = Field(default=None, ge=0)
     fecha_ingreso: date | None = None
 
 
@@ -28,10 +29,15 @@ class EmployeeOut(BaseModel):
     apellido: str
     email: str
     puesto: str
-    salario: float
+    salario: Decimal
     fecha_ingreso: date
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("salario")
+    def _serialize_salario(self, value: Decimal) -> float:
+        # Almacenamos con precisión decimal (Decimal128); exponemos número en la API.
+        return float(value)
 
 
 class PaginatedEmployees(BaseModel):
@@ -47,5 +53,9 @@ class PaginatedEmployees(BaseModel):
 
 
 class SalaryStats(BaseModel):
-    average_salary: float | None
+    average_salary: Decimal | None
     total_employees: int
+
+    @field_serializer("average_salary")
+    def _serialize_average(self, value: Decimal | None) -> float | None:
+        return float(value) if value is not None else None

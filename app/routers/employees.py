@@ -42,7 +42,9 @@ async def salary_stats(_: User = Depends(get_current_user)):
         return SalaryStats(average_salary=None, total_employees=0)
     pipeline = [{"$group": {"_id": None, "avg": {"$avg": "$salario"}}}]
     result = await Employee.get_motor_collection().aggregate(pipeline).to_list(1)
-    avg = float(result[0]["avg"]) if result else None
+    raw_avg = result[0]["avg"] if result else None
+    # $avg sobre Decimal128 devuelve un bson.Decimal128; lo pasamos a Decimal exacto.
+    avg = raw_avg.to_decimal() if raw_avg is not None else None
     return SalaryStats(average_salary=avg, total_employees=total)
 
 

@@ -117,7 +117,7 @@ Respuesta paginada: `{ items, total, page, pages }`.
 - **JWT**: `python-jose` para encode/decode; bcrypt directo para hashing de passwords (passlib no es compatible con bcrypt ≥ 4).
 - **Stats**: el endpoint `/stats/salary-average` usa un aggregation pipeline de MongoDB (`$avg`) en lugar de calcular en memoria, y se declara antes de `/{id}` para evitar conflictos de routing.
 - **Tests**: TDD con `testcontainers` (MongoDB real efímero); Motor re-inicializado por test para compatibilidad con el event loop de pytest-asyncio; cobertura ≥ 85%.
-- **Salario**: almacenado como `float` (Double en MongoDB). En un sistema productivo se usaría `Decimal128` para evitar errores de punto flotante.
+- **Salario**: modelado como `Decimal` y persistido como `Decimal128` en MongoDB para evitar errores de punto flotante en montos de dinero. El promedio del CFO se calcula con aritmética decimal exacta (`$avg` sobre `Decimal128`); en la API se expone como número JSON vía un `field_serializer`. Hay un test (`test_stats_preserves_decimal_precision`) que verifica que el promedio no sufre deriva de float.
 
 ---
 
