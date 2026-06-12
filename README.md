@@ -80,72 +80,73 @@ El gate de cobertura es ≥ 85%; la suite actual supera el 95%.
 ## Guía de prueba completa (curl)
 
 Esta secuencia ejercita **todas** las funcionalidades de la API de principio a fin.
-Pegala paso a paso en una terminal con la API ya levantada. Usa
-[`jq`](https://stedolan.github.io/jq/) para extraer datos de las respuestas (en Debian/
-Ubuntu: `sudo apt install jq`); más abajo hay una alternativa sin `jq`.
+Corré los pasos **en orden y en la misma terminal** (los pasos 2 y 3 guardan valores en
+variables `TOKEN` y `EMP_ID` que se usan después). La API tiene que estar levantada en
+otra terminal. Las URLs son literales, así que cada comando funciona por sí solo.
+
+> Para extraer datos de las respuestas se usa `python3` (ya viene con el sistema), así no
+> hace falta instalar nada extra.
+
+> Los comandos usan `curl -sS`: salida limpia pero **muestra errores** si algo falla
+> (a diferencia de `-s` a secas, que los oculta).
 
 ```bash
-BASE=http://localhost:8000
-
-# 1) Registrar un usuario
-curl -s -X POST $BASE/auth/register \
+# 1) Registrar un usuario (devuelve el usuario creado; si ya existe, responde 409)
+curl -sS -X POST http://localhost:8000/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@peopleflow.com","password":"secret123"}'
 
-# 2) Login → guardar el JWT en una variable (el campo es "username", va el email)
-TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -d 'username=admin@peopleflow.com&password=secret123' | jq -r .access_token)
-echo "TOKEN=$TOKEN"        # debe imprimir un string largo, no 'null'
+# 2) Login → guardar el JWT en la variable TOKEN (el campo es "username", va el email)
+TOKEN=$(curl -sS -X POST http://localhost:8000/auth/login \
+  -d 'username=admin@peopleflow.com&password=secret123' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+echo "$TOKEN"        # debe imprimir un string largo tipo eyJ... (no vacío)
 
 # A partir de acá, todos los endpoints de empleados requieren el header Authorization.
 
 # 3) Crear empleados (guardamos el id del primero para los pasos siguientes)
-EMP_ID=$(curl -s -X POST $BASE/employees \
+EMP_ID=$(curl -sS -X POST http://localhost:8000/employees \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"nombre":"Ana","apellido":"García","email":"ana@example.com","puesto":"Engineer","salario":85000,"fecha_ingreso":"2022-01-15"}' \
-  | jq -r .id)
-echo "EMP_ID=$EMP_ID"
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+echo "$EMP_ID"
 
-curl -s -X POST $BASE/employees \
+curl -sS -X POST http://localhost:8000/employees \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"nombre":"Beto","apellido":"Pérez","email":"beto@example.com","puesto":"Engineer","salario":95000,"fecha_ingreso":"2023-03-10"}'
 
-curl -s -X POST $BASE/employees \
+curl -sS -X POST http://localhost:8000/employees \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"nombre":"Carla","apellido":"Díaz","email":"carla@example.com","puesto":"Manager","salario":120000,"fecha_ingreso":"2021-09-01"}'
 
 # 4) Listar con filtro por puesto y paginación → { items, total, page, pages }
-curl -s "$BASE/employees?puesto=Engineer&page=1&page_size=10" \
+curl -sS "http://localhost:8000/employees?puesto=Engineer&page=1&page_size=10" \
   -H "Authorization: Bearer $TOKEN"
 
 # 5) Obtener un empleado por id
-curl -s $BASE/employees/$EMP_ID -H "Authorization: Bearer $TOKEN"
+curl -sS http://localhost:8000/employees/$EMP_ID -H "Authorization: Bearer $TOKEN"
 
 # 6) Actualizar (parcial) — subimos el salario de Ana
-curl -s -X PATCH $BASE/employees/$EMP_ID \
+curl -sS -X PATCH http://localhost:8000/employees/$EMP_ID \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"salario":90000}'
 
 # 7) Promedio de salarios de toda la empresa (el reporte del CFO)
-curl -s $BASE/employees/stats/salary-average -H "Authorization: Bearer $TOKEN"
+curl -sS http://localhost:8000/employees/stats/salary-average -H "Authorization: Bearer $TOKEN"
 
-# 8) Eliminar un empleado (responde 204 sin cuerpo)
-curl -s -o /dev/null -w "%{http_code}\n" -X DELETE $BASE/employees/$EMP_ID \
+# 8) Eliminar un empleado (responde 204 sin cuerpo; mostramos solo el código HTTP)
+curl -sS -o /dev/null -w "%{http_code}\n" -X DELETE http://localhost:8000/employees/$EMP_ID \
   -H "Authorization: Bearer $TOKEN"
 
 # 9) Verificar que ya no existe (responde 404)
-curl -s -o /dev/null -w "%{http_code}\n" $BASE/employees/$EMP_ID \
+curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:8000/employees/$EMP_ID \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**Sin `jq`** (paso 2 alternativo, usando Python):
-
-```bash
-TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -d 'username=admin@peopleflow.com&password=secret123' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-```
-
+> **Si un comando "no devuelve nada":** casi siempre es porque `TOKEN` quedó vacío (no
+> corriste el paso 2 en esa misma terminal) o usaste `-s` con una URL mal escrita, que
+> oculta el error. Verificá con `echo "$TOKEN"`; si está vacío, repetí el paso 2.
+>
 > `Authorization` siempre lleva la palabra **`Bearer`** + espacio + el JWT. Sin un token
 > válido, los endpoints de empleados responden `401`.
 
