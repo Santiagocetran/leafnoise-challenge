@@ -15,4 +15,4 @@ htmlcov/
 .pytest_cache/
 *.log
 .DS_Store
-plans/implementation-prompt.md
+plans/
